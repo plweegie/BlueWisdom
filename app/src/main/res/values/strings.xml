@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">BlueWisdom</string>
+    <string name="start_scanning_label">Start scanning</string>
+</resources>

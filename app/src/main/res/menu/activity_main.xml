@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/start_scanning_item"
+        android:title="@string/start_scanning_label"
+        android:icon="@drawable/ic_bluetooth_searching_24dp"
+        app:showAsAction="always" />
+
+</menu>
