@@ -23,7 +23,7 @@ import android.view.View
 import kotlinx.android.synthetic.main.activity_main.*
 import java.util.*
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
 
     private lateinit var mBluetoothAdapter: BluetoothAdapter
     private var mBluetoothGatt: BluetoothGatt? = null
@@ -40,11 +40,6 @@ class MainActivity : AppCompatActivity() {
                             = intent.getParcelableExtra(LeScanService.SCAN_RESULT_EXTRA)
 
                     mAdapter.addDevice(result?.device)
-
-//                    if (results!!.isNotEmpty()) {
-//                        mBluetoothGatt = results[0].device.connectGatt(this@MainActivity,
-//                                false, mGattCallback)
-//                    }
                 }
             }
         }
@@ -72,6 +67,11 @@ class MainActivity : AppCompatActivity() {
                         Log.d("service", char.uuid.toString())
                     }
                 }
+            }
+
+            override fun onCharacteristicRead(gatt: BluetoothGatt?,
+                                              characteristic: BluetoothGattCharacteristic?, status: Int) {
+                
             }
         }
     }
@@ -102,7 +102,6 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(mResultReceiver)
-        mBluetoothGatt?.disconnect()
         mBluetoothGatt?.close()
         mBluetoothGatt = null
     }
@@ -154,6 +153,10 @@ class MainActivity : AppCompatActivity() {
                 super.onRequestPermissionsResult(requestCode, permissions, grantResults)
             }
         }
+    }
+
+    override fun onDeviceSelected(device: BluetoothDevice) {
+        mBluetoothGatt = device.connectGatt(this@MainActivity, false, mGattCallback)
     }
 
     private fun startDeviceScan() {

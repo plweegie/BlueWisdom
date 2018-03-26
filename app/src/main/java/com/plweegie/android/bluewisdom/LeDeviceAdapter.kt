@@ -11,6 +11,7 @@ import kotlinx.android.synthetic.main.device_list_item.view.*
 class LeDeviceAdapter(private val context: Context) : RecyclerView.Adapter<LeDeviceAdapter.LeDeviceViewHolder>() {
 
     private var mDevices: MutableList<BluetoothDevice> = mutableListOf()
+    private var mOnDeviceSelectedListener = context as OnDeviceSelectedListener
 
     override fun onCreateViewHolder(parent: ViewGroup?, viewType: Int): LeDeviceViewHolder {
         val inflater = LayoutInflater.from(context)
@@ -37,6 +38,11 @@ class LeDeviceAdapter(private val context: Context) : RecyclerView.Adapter<LeDev
         fun bind(device: BluetoothDevice) {
             itemView.device_name_tv.text = device.name
             itemView.device_address_tv.text = device.address
+
+            itemView.setOnClickListener {
+                val selectedDevice = mDevices[adapterPosition]
+                mOnDeviceSelectedListener.onDeviceSelected(selectedDevice)
+            }
         }
     }
 }
