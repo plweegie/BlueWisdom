@@ -13,3 +13,5 @@ projectFilesBackup/
 release/
 .externalNativeBuild
 google-services.json
+rsa*
+/raw/service.json

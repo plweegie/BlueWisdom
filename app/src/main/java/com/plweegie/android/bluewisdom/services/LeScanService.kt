@@ -1,4 +1,4 @@
-package com.plweegie.android.bluewisdom
+package com.plweegie.android.bluewisdom.services
 
 import android.app.Service
 import android.bluetooth.BluetoothAdapter
@@ -13,17 +13,17 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.ParcelUuid
-import android.support.v4.content.LocalBroadcastManager
 import android.util.Log
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import java.util.*
 
 
 class LeScanService : Service() {
 
-    private lateinit var mBluetoothAdapter: BluetoothAdapter
-    private lateinit var mThread: HandlerThread
+    private lateinit var bluetoothAdapter: BluetoothAdapter
+    private lateinit var handlerThread: HandlerThread
 
-    private val mScanCallback: ScanCallback by lazy {
+    private val scanCallback: ScanCallback by lazy {
         object : ScanCallback() {
 
             override fun onScanResult(callbackType: Int, result: ScanResult?) {
@@ -31,7 +31,7 @@ class LeScanService : Service() {
                 intent.putExtra(SCAN_RESULT_EXTRA, result)
                 LocalBroadcastManager.getInstance(this@LeScanService).sendBroadcast(intent)
 
-                mBluetoothAdapter.bluetoothLeScanner.stopScan(mScanCallback)
+                bluetoothAdapter.bluetoothLeScanner.stopScan(scanCallback)
             }
 
             override fun onBatchScanResults(results: MutableList<ScanResult>?) {
@@ -47,16 +47,15 @@ class LeScanService : Service() {
     override fun onCreate() {
         super.onCreate()
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        mBluetoothAdapter = bluetoothManager.adapter
+        bluetoothAdapter = bluetoothManager.adapter
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 
-        mThread = HandlerThread("LeScanThread")
-        mThread.start()
-        val handler = Handler(mThread.looper)
+        handlerThread = HandlerThread("LeScanThread").apply { start() }
+        val handler = Handler(handlerThread.looper)
 
-        val scanSettings: ScanSettings = intent!!.getParcelableExtra(SCAN_SETTINGS_EXTRA)
+        val scanSettings: ScanSettings? = intent?.getParcelableExtra(SCAN_SETTINGS_EXTRA)
         val scanFilters = arrayListOf(
                 ScanFilter.Builder()
                         .setServiceUuid(ParcelUuid(UUID.fromString(GATT_ENVIRONMENTAL_SENSING_SERVICE_UUID)))
@@ -65,11 +64,11 @@ class LeScanService : Service() {
 
         handler.apply {
             post {
-                mBluetoothAdapter.bluetoothLeScanner.startScan(scanFilters, scanSettings, mScanCallback)
+                bluetoothAdapter.bluetoothLeScanner.startScan(scanFilters, scanSettings, scanCallback)
                 Log.d("scanning", "started")
             }
             postDelayed({
-                mBluetoothAdapter.bluetoothLeScanner.stopScan(mScanCallback)
+                bluetoothAdapter.bluetoothLeScanner.stopScan(scanCallback)
                 Log.d("scanning", "stopped")
                 stopSelf(startId)
             }, 10000)
@@ -81,22 +80,20 @@ class LeScanService : Service() {
     override fun onBind(p0: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        mThread.quitSafely()
+        handlerThread.quitSafely()
         super.onDestroy()
     }
 
     companion object {
-        const val GATT_TIME_SERVICE_UUID = "00001805-0000-1000-8000-00805f9b34fb"
         const val GATT_ENVIRONMENTAL_SENSING_SERVICE_UUID = "0000181a-0000-1000-8000-00805f9b34fb"
         private const val SCAN_SETTINGS_EXTRA = "scan-settings"
 
         const val SCAN_RESULT_EXTRA = "scan-result"
         const val SCAN_RESULT_ACTION = "com.plweegie.android.bluewidsom.SCAN_RESULT"
 
-        fun newIntent(context: Context, settings: ScanSettings): Intent? {
-            val intent = Intent(context, LeScanService::class.java)
-            intent.putExtra(SCAN_SETTINGS_EXTRA, settings)
-            return intent
-        }
+        fun newIntent(context: Context, settings: ScanSettings): Intent? =
+                Intent(context, LeScanService::class.java).apply {
+                    putExtra(SCAN_SETTINGS_EXTRA, settings)
+                }
     }
 }

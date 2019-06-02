@@ -24,8 +24,8 @@
             </intent-filter>
         </activity>
 
-        <service android:name=".LeScanService" />
-        <service android:name=".BtScanService" />
-    </application>
+        <service android:name=".services.LeScanService" />
+        <service android:name=".services.BtScanService" />
+     </application>
 
 </manifest>
