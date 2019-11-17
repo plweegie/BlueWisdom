@@ -1,7 +1,9 @@
 package com.plweegie.android.bluewisdom
 
 import android.app.Activity
-import android.bluetooth.*
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.BroadcastReceiver
@@ -10,26 +12,22 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Bundle
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.DividerItemDecoration
-import androidx.recyclerview.widget.LinearLayoutManager
-import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.recyclerview.widget.DividerItemDecoration
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.plweegie.android.bluewisdom.adapters.LeDeviceAdapter
 import com.plweegie.android.bluewisdom.services.LeScanService
 import kotlinx.android.synthetic.main.activity_main.*
-import java.util.*
 
 class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
 
-    private var bluetoothGatt: BluetoothGatt? = null
     private lateinit var leDeviceAdapter: LeDeviceAdapter
-    private lateinit var bluetoothDevice: BluetoothDevice
 
     private val bluetoothAdapter: BluetoothAdapter? by lazy(LazyThreadSafetyMode.NONE) {
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -39,90 +37,16 @@ class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
     private val BluetoothAdapter.isDisabled: Boolean
         get() = !isEnabled
 
-    private val resultReceiver: BroadcastReceiver by lazy {
-        object : BroadcastReceiver() {
+    private val resultReceiver: BroadcastReceiver = object : BroadcastReceiver() {
 
-            override fun onReceive(context: Context?, intent: Intent?) {
-                when (intent?.action) {
-                    LeScanService.SCAN_RESULT_ACTION -> {
-                        scan_indicator.visibility = View.GONE
-                        val result: ScanResult?
-                                = intent.getParcelableExtra(LeScanService.SCAN_RESULT_EXTRA)
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                LeScanService.SCAN_RESULT_ACTION -> {
+                    scan_indicator.visibility = View.GONE
+                    val result: ScanResult?
+                            = intent.getParcelableExtra(LeScanService.SCAN_RESULT_EXTRA)
 
-                        leDeviceAdapter.addDevice(result?.device)
-                    }
-                }
-            }
-        }
-    }
-
-    private val gattCallback: BluetoothGattCallback by lazy {
-        object : BluetoothGattCallback() {
-
-            override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
-                Log.d("Status", status.toString())
-                Log.d("New state", newState.toString())
-
-                when {
-                    status != BluetoothGatt.GATT_SUCCESS -> {
-                        disconnectGatt()
-                        return
-                    }
-                    newState == BluetoothProfile.STATE_CONNECTED -> bluetoothGatt?.discoverServices()
-                    newState == BluetoothProfile.STATE_DISCONNECTED -> disconnectGatt()
-                }
-            }
-
-            override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
-
-                if (status != BluetoothGatt.GATT_SUCCESS) {
-                    return
-                }
-                val timeService = bluetoothGatt?.services
-                        ?.filter { it.uuid == UUID.fromString(LeScanService.GATT_ENVIRONMENTAL_SENSING_SERVICE_UUID) }
-                        ?.get(0)
-                val characteristics = timeService?.characteristics
-
-                characteristics?.let {
-                    it.forEach { char ->
-                        Log.d("service", char.uuid.toString())
-                        enableGattNotifications(char)
-                    }
-                }
-            }
-
-            override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
-
-                if (characteristic?.value != null) {
-                    when (characteristic.uuid) {
-                        UUID.fromString(TEMPERATURE_CHARACTERISTIC_UUID) -> {
-                            val temperature = characteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_SINT16, 0)
-                            Log.d("MainActivity", temperature.toString())
-                        }
-                        UUID.fromString(PRESSURE_CHARACTERISTIC_UUID) -> {
-                            val pressure = characteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_UINT32, 0)
-                            Log.d("MainActivity", pressure.toString())
-                        }
-                    }
-                }
-            }
-
-            override fun onCharacteristicRead(gatt: BluetoothGatt?,
-                                              characteristic: BluetoothGattCharacteristic?, status: Int) {
-                if (status == BluetoothGatt.GATT_SUCCESS && characteristic?.value != null) {
-
-                    val data = characteristic.value
-                    when (characteristic.uuid) {
-                        UUID.fromString(TEMPERATURE_CHARACTERISTIC_UUID) -> {
-                            val temperature = ((data[0].toInt() shl 8) or data[1].toInt()) / 100.0
-                            Log.d("MainActivity", temperature.toString())
-                        }
-                        UUID.fromString(PRESSURE_CHARACTERISTIC_UUID) -> {
-                            val pressure = ((data[0].toInt() shl 24) or (data[1].toInt() shl 16) or
-                                    (data[2].toInt() shl 8) or data[3].toInt()) / 10.0
-                            Log.d("MainActivity", pressure.toString())
-                        }
-                    }
+                    leDeviceAdapter.addDevice(result?.device)
                 }
             }
         }
@@ -146,10 +70,8 @@ class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(resultReceiver)
-        disconnectGatt()
-        bluetoothGatt = null
+        super.onDestroy()
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -204,8 +126,7 @@ class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
     }
 
     override fun onDeviceSelected(device: BluetoothDevice) {
-        bluetoothDevice = device
-        bluetoothGatt = bluetoothDevice.connectGatt(this@MainActivity, false, gattCallback)
+        startActivity(LeConnectionActivity.newIntent(this, device.address))
     }
 
     private fun startDeviceScan() {
@@ -216,22 +137,6 @@ class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
         startService(LeScanService.newIntent(this, settings))
     }
 
-    private fun enableGattNotifications(characteristic: BluetoothGattCharacteristic) {
-        bluetoothGatt?.setCharacteristicNotification(characteristic, true)
-
-        val gattDescriptor = characteristic.getDescriptor(UUID.fromString(CLIENT_CONFIG_UUID))
-        gattDescriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-        bluetoothGatt?.writeDescriptor(gattDescriptor)
-    }
-
-    private fun disconnectGatt() {
-        bluetoothGatt?.apply {
-            disconnect()
-            close()
-        }
-        bluetoothGatt = null
-    }
-
     private fun hasLocationPermission(): Boolean =
             (ContextCompat.checkSelfPermission(this, LOCATION_PERMISSIONS[0]) ==
                     PackageManager.PERMISSION_GRANTED)
@@ -239,10 +144,6 @@ class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
     companion object {
         private const val REQUEST_ENABLE_BT = 211
         private const val REQUEST_LOCATION_PERMS = 11
-
-        private const val TEMPERATURE_CHARACTERISTIC_UUID = "00002a6e-0000-1000-8000-00805f9b34fb"
-        private const val PRESSURE_CHARACTERISTIC_UUID = "00002a6d-0000-1000-8000-00805f9b34fb"
-        private const val CLIENT_CONFIG_UUID = "00002902-0000-1000-8000-00805f9b34fb"
 
         private val LOCATION_PERMISSIONS = arrayOf(
                 android.Manifest.permission.ACCESS_COARSE_LOCATION,
