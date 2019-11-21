@@ -62,7 +62,7 @@ class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
             layoutManager = LinearLayoutManager(this@MainActivity)
             setHasFixedSize(true)
             addItemDecoration(DividerItemDecoration(this@MainActivity, LinearLayoutManager.VERTICAL))
-            adapter = adapter
+            adapter = leDeviceAdapter
         }
 
         val intentFilter = IntentFilter(LeScanService.SCAN_RESULT_ACTION)
