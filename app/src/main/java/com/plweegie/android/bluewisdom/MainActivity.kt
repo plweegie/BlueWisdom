@@ -136,7 +136,7 @@ class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
                 .build()
 
         val scanFilter = ScanFilter.Builder()
-                .setServiceUuid(ParcelUuid(UUID.fromString(GATT_ENVIRONMENTAL_SENSING_SERVICE_UUID)))
+                .setServiceUuid(ParcelUuid(GATT_ENVIRONMENTAL_SENSING_SERVICE_UUID))
                 .build()
 
         val scanObservable = bleClient.scanBleDevices(settings, scanFilter)
@@ -193,7 +193,7 @@ class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
         private const val REQUEST_ENABLE_BT = 211
         private const val REQUEST_LOCATION_PERMS = 11
         private const val MACHINE_ADDRESS_PREF = "machine_address_pref"
-        private const val GATT_ENVIRONMENTAL_SENSING_SERVICE_UUID = "0000181a-0000-1000-8000-00805f9b34fb"
+        val GATT_ENVIRONMENTAL_SENSING_SERVICE_UUID: UUID = UUID.fromString("0000181a-0000-1000-8000-00805f9b34fb")
 
         private val LOCATION_PERMISSIONS = arrayOf(
                 android.Manifest.permission.ACCESS_COARSE_LOCATION,

@@ -8,7 +8,6 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.polidea.rxandroidble2.RxBleClient
 import com.polidea.rxandroidble2.RxBleDevice
-import io.reactivex.Observable
 import io.reactivex.android.schedulers.AndroidSchedulers
 import io.reactivex.disposables.CompositeDisposable
 import io.reactivex.schedulers.Schedulers
@@ -61,8 +60,8 @@ class LeConnectionActivity : AppCompatActivity() {
     private fun connectGatt(device: RxBleDevice?) {
         val connectionDisposable = device!!.establishConnection(false)
                 .flatMap {
-                    Observable.merge(it.setupNotification(TEMPERATURE_CHARACTERISTIC_UUID),
-                            it.setupNotification(PRESSURE_CHARACTERISTIC_UUID)) }
+                    it.setupNotification(TEMPERATURE_CHARACTERISTIC_UUID)
+                }
                 .flatMap { it }
                 .throttleFirst(500, TimeUnit.MILLISECONDS)
                 .subscribeOn(Schedulers.io())
