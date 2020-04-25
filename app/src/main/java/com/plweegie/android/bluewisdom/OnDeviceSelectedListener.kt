@@ -1,8 +1,8 @@
 package com.plweegie.android.bluewisdom
 
-import android.bluetooth.BluetoothDevice
+import com.polidea.rxandroidble2.RxBleDevice
 
 
 interface OnDeviceSelectedListener {
-    fun onDeviceSelected(device: BluetoothDevice)
+    fun onDeviceSelected(device: RxBleDevice)
 }

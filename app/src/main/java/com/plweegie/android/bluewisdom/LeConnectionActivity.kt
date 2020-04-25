@@ -1,57 +1,103 @@
 package com.plweegie.android.bluewisdom
 
-import android.content.BroadcastReceiver
+import android.bluetooth.BluetoothGattCharacteristic
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.os.Bundle
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import com.plweegie.android.bluewisdom.services.LeConnectionService
+import com.polidea.rxandroidble2.RxBleClient
+import com.polidea.rxandroidble2.RxBleDevice
+import io.reactivex.android.schedulers.AndroidSchedulers
+import io.reactivex.disposables.CompositeDisposable
+import io.reactivex.schedulers.Schedulers
 import kotlinx.android.synthetic.main.activity_le_connection.*
+import java.util.*
+import java.util.concurrent.TimeUnit
+import javax.inject.Inject
 
 
 class LeConnectionActivity : AppCompatActivity() {
 
-    private lateinit var macAddress: String
+    private var macAddress: String? = null
+    private var bleDevice: RxBleDevice? = null
+
+    @Inject
+    lateinit var bleClient: RxBleClient
 
     companion object {
+        private val TEMPERATURE_CHARACTERISTIC_UUID = UUID.fromString("00002a6e-0000-1000-8000-00805f9b34fb")
+        private val PRESSURE_CHARACTERISTIC_UUID = UUID.fromString("00002a6d-0000-1000-8000-00805f9b34fb")
+
+        private const val MAC_ADDRESS_EXTRA = "extra_mac_address"
+
         fun newIntent(context: Context, macAddress: String) =
                 Intent(context, LeConnectionActivity::class.java).apply {
-                    putExtra(LeConnectionService.MAC_ADDRESS_EXTRA, macAddress)
+                    putExtra(MAC_ADDRESS_EXTRA, macAddress)
                 }
     }
 
-    private val resultReceiver: BroadcastReceiver = object : BroadcastReceiver() {
+    private val disposable: CompositeDisposable = CompositeDisposable()
 
-        override fun onReceive(context: Context?, intent: Intent?) {
-            when (intent?.action) {
-                LeConnectionService.ACTION_TEMPERATURE_AVAILABLE -> {
-                    temperature_text?.text = intent.getStringExtra(LeConnectionService.EXTRA_DATA)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        (application as App).appComponent.inject(this)
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_le_connection)
+
+        macAddress = intent.getStringExtra(MAC_ADDRESS_EXTRA)
+
+        macAddress?.let {
+            bleDevice = bleClient.getBleDevice(it)
+            connectGatt(bleDevice)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        disposable.dispose()
+    }
+
+    private fun connectGatt(device: RxBleDevice?) {
+        val connectionDisposable = device!!.establishConnection(false)
+                .flatMap {
+                    it.setupNotification(TEMPERATURE_CHARACTERISTIC_UUID)
                 }
-                LeConnectionService.ACTION_PRESSURE_AVAILABLE -> {
-                    pressure_text?.text = intent.getStringExtra(LeConnectionService.EXTRA_DATA)
+                .flatMap { it }
+                .throttleFirst(500, TimeUnit.MILLISECONDS)
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(
+                        { bytes -> processCharacteristicResult(bytes) },
+                        { error -> Toast.makeText(this, error.message, Toast.LENGTH_SHORT).show() }
+                )
+        disposable.add(connectionDisposable)
+    }
+
+    private fun processCharacteristicResult(byteArray: ByteArray) {
+
+        when {
+            byteArray.size <= 2 -> {
+                BluetoothGattCharacteristic(TEMPERATURE_CHARACTERISTIC_UUID, 16, 1).also {
+                    it.value = byteArray
+                    processTemperature(it)
+                }
+            }
+            else -> {
+                BluetoothGattCharacteristic(PRESSURE_CHARACTERISTIC_UUID, 16, 1).also {
+                    it.value = byteArray
+                    processPressure(it)
                 }
             }
         }
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_le_connection)
-
-        val intentFilter = IntentFilter(LeConnectionService.ACTION_TEMPERATURE_AVAILABLE)
-        intentFilter.addAction(LeConnectionService.ACTION_PRESSURE_AVAILABLE)
-
-        LocalBroadcastManager.getInstance(this).registerReceiver(resultReceiver, intentFilter)
-
-        macAddress = intent.getStringExtra(LeConnectionService.MAC_ADDRESS_EXTRA) ?: ""
-        startService(LeConnectionService.newIntent(this, macAddress))
+    private fun processTemperature(characteristic: BluetoothGattCharacteristic) {
+        val temperature = characteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_SINT16, 0)
+        temperature_text?.text = temperature.toString()
     }
 
-    override fun onDestroy() {
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(resultReceiver)
-        stopService((LeConnectionService.newIntent(this, macAddress)))
-        super.onDestroy()
+    private fun processPressure(characteristic: BluetoothGattCharacteristic) {
+        val pressure = characteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_UINT32, 0)
+        pressure_text?.text = pressure.toString()
     }
 }
