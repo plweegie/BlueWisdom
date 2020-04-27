@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<actions>
+    <action intentName="actions.intent.GET_HEALTH_OBSERVATION" >
+        <fulfillment
+            fulfillmentMode="actions.fulfillment.SLICE"
+            urlTemplate="content://com.plweegie.android.bluewisdom/temp{?characteristic}">
+
+            <parameter-mapping
+                entityMatchRequired="true"
+                intentParameter="healthObservation.measuredProperty.name"
+                urlParameter="characteristic" />
+        </fulfillment>
+
+        <parameter name="healthObservation.measuredProperty.name">
+            <entity-set-reference entitySetId="HealthEntitySet" />
+        </parameter>
+
+    </action>
+
+    <entity-set entitySetId="HealthEntitySet">
+
+        <!-- For each entity you can specify the name, alternate names and the identifier -->
+        <!-- The identifier is the value that will be added to the action uri. -->
+        <!-- For our sample we map the supported entities with the class FitActivity.Type  -->
+
+        <entity
+            name="@string/heart_rate"
+            identifier="HEART_RATE" />
+        <entity
+            name="@string/unknown"
+            identifier="UNKNOWN" />
+    </entity-set>
+</actions>
