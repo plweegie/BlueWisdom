@@ -15,9 +15,11 @@ import java.util.concurrent.TimeUnit
 
 class LeConnectionViewModel(private val bleClient: RxBleClient) : ViewModel() {
 
-    private companion object {
-        val TEMPERATURE_CHARACTERISTIC_UUID: UUID = UUID.fromString("00002a6e-0000-1000-8000-00805f9b34fb")
-        val PRESSURE_CHARACTERISTIC_UUID: UUID = UUID.fromString("00002a6d-0000-1000-8000-00805f9b34fb")
+    companion object {
+        private val TEMPERATURE_CHARACTERISTIC_UUID: UUID = UUID.fromString("00002a6e-0000-1000-8000-00805f9b34fb")
+        private val PRESSURE_CHARACTERISTIC_UUID: UUID = UUID.fromString("00002a6d-0000-1000-8000-00805f9b34fb")
+
+        const val TEMPERATURE_PREFERENCE = "pref_temperature"
     }
 
     private val _temperature = MutableLiveData<Float>()

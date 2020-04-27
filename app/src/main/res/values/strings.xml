@@ -1,4 +1,11 @@
 <resources>
     <string name="app_name">BlueWisdom</string>
     <string name="start_scanning_label">Start scanning</string>
+
+    <!-- Slices and Actions -->
+    <string name="slice_action">Temperature</string>
+    <string name="temperature_report">Your device is reporting %1$d.</string>
+    <string name="heart_rate">Heart Rate</string>
+    <string name="unknown">Other</string>
+    <string name="connect_yes">Connect</string>
 </resources>

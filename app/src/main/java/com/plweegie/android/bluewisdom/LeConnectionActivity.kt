@@ -4,8 +4,10 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.edit
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
+import androidx.preference.PreferenceManager
 import com.plweegie.android.bluewisdom.viewmodel.LeConnectionViewModel
 import com.plweegie.android.bluewisdom.viewmodel.LeConnectionViewModelFactory
 import kotlinx.android.synthetic.main.activity_le_connection.*
@@ -45,6 +47,13 @@ class LeConnectionActivity : AppCompatActivity() {
 
         viewModel.temperatureLiveData.observe(this, Observer {
             temperature_text?.text = it.toString()
+            notifyTemperatureSlice(it)
         })
+    }
+
+    private fun notifyTemperatureSlice(temperature: Float) {
+        PreferenceManager.getDefaultSharedPreferences(this).edit {
+            putFloat(LeConnectionViewModel.TEMPERATURE_PREFERENCE, temperature)
+        }
     }
 }
