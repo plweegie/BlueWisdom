@@ -47,6 +47,7 @@ class BleSliceProvider : SliceProvider() {
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
         if (key == LeConnectionViewModel.TEMPERATURE_PREFERENCE) {
             currentContext.contentResolver.notifyChange(getUri(currentContext, PATH), null)
+            onBindSlice(getEncodedUri(currentContext, PATH))
         }
     }
 
