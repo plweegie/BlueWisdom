@@ -33,6 +33,11 @@ class LeDeviceAdapter(private val context: Context) : RecyclerView.Adapter<LeDev
         }
     }
 
+    fun clearData() {
+        devices.clear()
+        notifyDataSetChanged()
+    }
+
     inner class LeDeviceViewHolder(inflater: LayoutInflater, parent: ViewGroup?, layoutResId: Int) :
             RecyclerView.ViewHolder(inflater.inflate(layoutResId, parent, false)) {
 

@@ -15,7 +15,6 @@ import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.plweegie.android.bluewisdom.adapters.LeDeviceAdapter
@@ -23,8 +22,8 @@ import com.polidea.rxandroidble2.RxBleClient
 import com.polidea.rxandroidble2.RxBleDevice
 import com.polidea.rxandroidble2.scan.ScanFilter
 import com.polidea.rxandroidble2.scan.ScanSettings
-import io.reactivex.Observable
-import io.reactivex.disposables.CompositeDisposable
+import io.reactivex.android.schedulers.AndroidSchedulers
+import io.reactivex.disposables.Disposable
 import kotlinx.android.synthetic.main.activity_main.*
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -37,6 +36,9 @@ class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
     @Inject
     lateinit var bleClient: RxBleClient
 
+    private var scanDisposable: Disposable? = null
+    private var hasClickedScan = false
+
     private val bluetoothAdapter: BluetoothAdapter? by lazy(LazyThreadSafetyMode.NONE) {
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothManager.adapter
@@ -45,7 +47,8 @@ class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
     private val BluetoothAdapter.isDisabled: Boolean
         get() = !isEnabled
 
-    private val disposable: CompositeDisposable = CompositeDisposable()
+    private val isScanning: Boolean
+        get() = scanDisposable != null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         (application as App).appComponent.inject(this)
@@ -64,8 +67,8 @@ class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
     }
 
     override fun onPause() {
-        disposable.dispose()
         super.onPause()
+        if (isScanning) scanDisposable?.dispose()
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -79,11 +82,7 @@ class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
                 bluetoothAdapter?.takeIf { it.isDisabled }?.apply {
                     val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
                     startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
-                } ?: if (hasLocationPermission()) {
-                    startDeviceScan()
-                } else {
-                    ActivityCompat.requestPermissions(this, LOCATION_PERMISSIONS, REQUEST_LOCATION_PERMS)
-                }
+                } ?: maybeStartDeviceScan()
                 true
             }
             else -> {
@@ -95,11 +94,7 @@ class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (requestCode == REQUEST_ENABLE_BT) {
             if (resultCode == Activity.RESULT_OK) {
-                if (hasLocationPermission()) {
-                    startDeviceScan()
-                } else {
-                    ActivityCompat.requestPermissions(this, LOCATION_PERMISSIONS, REQUEST_LOCATION_PERMS)
-                }
+                maybeStartDeviceScan()
             }
         } else {
             super.onActivityResult(requestCode, resultCode, data)
@@ -107,15 +102,9 @@ class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        when (requestCode) {
-            REQUEST_LOCATION_PERMS -> {
-                if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    startDeviceScan()
-                }
-            }
-            else -> {
-                super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-            }
+        if (isLocationPermissionGranted(requestCode, grantResults) && hasClickedScan) {
+            hasClickedScan = false
+            scanBleDevices()
         }
     }
 
@@ -128,8 +117,28 @@ class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
         startActivity(LeConnectionActivity.newIntent(this, device.macAddress))
     }
 
-    private fun startDeviceScan() {
-        scan_indicator.visibility = View.VISIBLE
+    private fun maybeStartDeviceScan() {
+        if (isScanning) {
+            scanDisposable?.dispose()
+        } else {
+            scan_indicator.visibility = View.VISIBLE
+
+            if (bleClient.isScanRuntimePermissionGranted) {
+                scanBleDevices()
+
+                Handler().postDelayed({
+                    scan_indicator.visibility = View.GONE
+                }, 5000)
+
+            } else {
+                hasClickedScan = true
+                requestLocationPermission(bleClient)
+            }
+        }
+    }
+
+    private fun scanBleDevices() {
+        leDeviceAdapter.clearData()
 
         val settings: ScanSettings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
@@ -139,65 +148,46 @@ class MainActivity : AppCompatActivity(), OnDeviceSelectedListener {
                 .setServiceUuid(ParcelUuid(GATT_ENVIRONMENTAL_SENSING_SERVICE_UUID))
                 .build()
 
-        val scanObservable = bleClient.scanBleDevices(settings, scanFilter)
+        bleClient.scanBleDevices(settings, scanFilter)
                 .distinct { result -> result.bleDevice.macAddress }
                 .take(5, TimeUnit.SECONDS)
-        val scanDisposable = scanObservable
+                .observeOn(AndroidSchedulers.mainThread())
+                .doFinally { dispose() }
                 .subscribe(
                         { scanResult ->
                             scan_indicator.visibility = View.GONE
                             leDeviceAdapter.addDevice(scanResult.bleDevice) },
                         { error -> showToast(error) }
                 )
+                .let { scanDisposable = it }
+    }
 
-        val flowDisposable = bleClient.observeStateChanges()
-                .switchMap { state ->
-                    when (state) {
-                        RxBleClient.State.READY -> scanObservable
-                        RxBleClient.State.BLUETOOTH_NOT_AVAILABLE -> Observable.error(Throwable("No BLE on your device"))
-                        RxBleClient.State.LOCATION_PERMISSION_NOT_GRANTED ->
-                            Observable.error(Throwable("Location permissions not granted"))
-                        RxBleClient.State.BLUETOOTH_NOT_ENABLED ->
-                            Observable.error(Throwable("Bluetooth not enabled"))
-                        RxBleClient.State.LOCATION_SERVICES_NOT_ENABLED ->
-                            Observable.error(Throwable("Location services not enabled"))
-                    }
-                }
-                .subscribe(
-                        { scanResult ->
-                            scan_indicator.visibility = View.GONE
-                            leDeviceAdapter.addDevice(scanResult.bleDevice) },
-                        { error -> showToast(error) }
-                )
+    private fun requestLocationPermission(client: RxBleClient) =
+        ActivityCompat.requestPermissions(
+            this,
+        /*
+         * the below would cause a ArrayIndexOutOfBoundsException on API < 23. Yet it should not be called then as runtime
+         * permissions are not needed and RxBleClient.isScanRuntimePermissionGranted() returns `true`
+         */
+            arrayOf(client.recommendedScanRuntimePermissions[0]),
+            REQUEST_LOCATION_PERMS
+        )
 
-        disposable.apply {
-            add(flowDisposable)
-            add(scanDisposable)
-        }
+    private fun isLocationPermissionGranted(requestCode: Int, grantResults: IntArray): Boolean =
+            requestCode == REQUEST_LOCATION_PERMS && grantResults[0] == PackageManager.PERMISSION_GRANTED
 
-        Handler().postDelayed({
-            disposable.clear()
-            scan_indicator.visibility = View.GONE
-        }, 5000)
+    private fun dispose() {
+        scanDisposable = null
     }
 
     private fun showToast(t: Throwable) {
         Toast.makeText(this, t.message, Toast.LENGTH_SHORT).show()
     }
 
-    private fun hasLocationPermission(): Boolean =
-            (ContextCompat.checkSelfPermission(this, LOCATION_PERMISSIONS[0]) ==
-                    PackageManager.PERMISSION_GRANTED)
-
     companion object {
         private const val REQUEST_ENABLE_BT = 211
-        private const val REQUEST_LOCATION_PERMS = 11
+        private const val REQUEST_LOCATION_PERMS = 101
         private const val MACHINE_ADDRESS_PREF = "machine_address_pref"
         val GATT_ENVIRONMENTAL_SENSING_SERVICE_UUID: UUID = UUID.fromString("0000181a-0000-1000-8000-00805f9b34fb")
-
-        private val LOCATION_PERMISSIONS = arrayOf(
-                android.Manifest.permission.ACCESS_COARSE_LOCATION,
-                android.Manifest.permission.ACCESS_FINE_LOCATION
-        )
     }
 }
