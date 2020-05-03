@@ -6,9 +6,12 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import com.polidea.rxandroidble2.RxBleClient
+import com.polidea.rxandroidble2.RxBleConnection
 import com.polidea.rxandroidble2.RxBleDevice
+import io.reactivex.Observable
 import io.reactivex.android.schedulers.AndroidSchedulers
-import io.reactivex.disposables.CompositeDisposable
+import io.reactivex.disposables.Disposable
+import io.reactivex.functions.BiFunction
 import io.reactivex.schedulers.Schedulers
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -17,13 +20,12 @@ class LeConnectionViewModel(private val bleClient: RxBleClient) : ViewModel() {
 
     companion object {
         private val TEMPERATURE_CHARACTERISTIC_UUID: UUID = UUID.fromString("00002a6e-0000-1000-8000-00805f9b34fb")
-        private val PRESSURE_CHARACTERISTIC_UUID: UUID = UUID.fromString("00002a6d-0000-1000-8000-00805f9b34fb")
 
         const val TEMPERATURE_PREFERENCE = "pref_temperature"
     }
 
     private val _temperature = MutableLiveData<Float>()
-    private val disposable: CompositeDisposable = CompositeDisposable()
+    private var disposable: Disposable? = null
 
     val temperatureLiveData: LiveData<Float>
         get() = _temperature
@@ -35,49 +37,52 @@ class LeConnectionViewModel(private val bleClient: RxBleClient) : ViewModel() {
     }
 
     override fun onCleared() {
-        disposable.clear()
+        disposable?.dispose()
     }
 
     private fun connectGatt(device: RxBleDevice?) {
         val connectionDisposable = device!!.establishConnection(false)
                 .flatMap {
-                    it.setupNotification(TEMPERATURE_CHARACTERISTIC_UUID)
+                    setupNotifications(it, listOf(TEMPERATURE_CHARACTERISTIC_UUID))
                 }
-                .flatMap { it }
                 .throttleFirst(500, TimeUnit.MILLISECONDS)
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(
-                        { bytes -> processCharacteristicResult(bytes) },
+                        { result -> processCharacteristicResult(result.first, result.second) },
                         { error -> Log.e("RxBle", error.message ?: "Error") }
                 )
-        disposable.add(connectionDisposable)
+        disposable = connectionDisposable
     }
 
-    private fun processCharacteristicResult(byteArray: ByteArray) {
+    private fun setupNotifications(connection: RxBleConnection, characteristics: List<UUID>):
+            Observable<Pair<UUID, ByteArray>> = Observable.fromIterable(characteristics)
+                .zipWith(Observable.interval(1000, TimeUnit.MILLISECONDS), BiFunction<UUID, Long, UUID> {
+                    uuid, _ -> uuid
+                })
+                .flatMap({
+                    Log.d("RxBle", "Setting notification for $it")
+                    connection.setupNotification(it)
+                            .doOnError { err ->
+                                Log.e("RxBLE", "Error: $err")
+                                err.printStackTrace() }
+                            .flatMap { observable -> observable }
+                }, {
+                    p0: UUID, p1: ByteArray -> Pair(p0, p1)
+                })
 
-        when {
-            byteArray.size <= 2 -> {
-                BluetoothGattCharacteristic(TEMPERATURE_CHARACTERISTIC_UUID, 16, 1).also {
-                    it.value = byteArray
-                    processTemperature(it)
-                }
-            }
-            else -> {
-                BluetoothGattCharacteristic(PRESSURE_CHARACTERISTIC_UUID, 16, 1).also {
-                    it.value = byteArray
-                    processPressure(it)
-                }
-            }
+    private fun processCharacteristicResult(characteristicUUID: UUID, byteArray: ByteArray) {
+        val characteristic = BluetoothGattCharacteristic(characteristicUUID, 16, 1).also {
+            it.value = byteArray
+        }
+
+        when (characteristicUUID) {
+            TEMPERATURE_CHARACTERISTIC_UUID -> processTemperature(characteristic)
         }
     }
 
     private fun processTemperature(characteristic: BluetoothGattCharacteristic) {
         val temperature = characteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_SINT16, 0)
         _temperature.postValue(temperature / 100.0f)
-    }
-
-    private fun processPressure(characteristic: BluetoothGattCharacteristic) {
-        val pressure = characteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_UINT32, 0)
     }
 }
